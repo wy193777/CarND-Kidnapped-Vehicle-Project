@@ -17,12 +17,16 @@
 #include <map>
 
 #include "particle_filter.h"
+#include <random>
+
+
+std::default_random_engine ENGINE;
 
 using namespace std;
 
 double ParticleFilter::gaussian_random(double mean, double deviation) {
     std::normal_distribution<double> dist(mean, deviation);
-    return dist(this->engine);
+    return dist(ENGINE);
 }
 
 double ParticleFilter::gaussian_probability(double mu, double sigma, double x) {
@@ -65,20 +69,6 @@ void ParticleFilter::prediction(
 
 }
 
-void ParticleFilter::dataAssociation(
-    std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations) {
-    // TODO: Find the predicted measurement that is closest to each observed measurement and
-    // assign the observed measurement to this particular landmark.
-    // NOTE: this method will NOT be called by the grading code. 
-    //       But you will probably find it useful to implement this method and 
-    //       use it as a helper during the updateWeights phase.
-    for (auto pred : predicted) {
-        for (auto obs: observations) {
-            
-        }
-    }
-
-}
 
 // TODO: Update the weights of each particle using a mult-variate Gaussian distribution. 
 //       You can read more about this distribution here: 
@@ -110,7 +100,6 @@ void ParticleFilter::updateWeights(
                 pa.x * cos(pa.theta) - pa.y * sin(pa.theta) + landmark.x,
                 pa.x * sin(pa.theta) - pa.y * cos(pa.theta) + landmark.y,
             };
-            observations_world.push_back(obs_t);
             
             vector<double> distances;
             auto [id1, x1, y1] = obs_t;
@@ -125,12 +114,21 @@ void ParticleFilter::updateWeights(
             auto lm = map_landmarks
                 .landmark_list[::distance(begin(distances), result)];
             obs_t.id = lm.id_i;
+            // printf ("ID: %d\n", lm.id_i);
+            observations_world.push_back(obs_t);
         }
         double prod = 1.0;
         for (auto landmark : observations_world) {
-            prod *= this->gaussian_probability(pa.x, x_std, landmark.x);
-            prod *= this->gaussian_probability(pa.y, y_std, landmark.y);
+            printf ("ID: %d\n", pa.id);
+            auto map_landmark = map_landmarks.landmark_list[landmark.id];
+            prod *= this->gaussian_probability(pa.x, x_std, map_landmark.x_f);
+            prod *= this->gaussian_probability(pa.y, y_std, map_landmark.y_f);
+            printf ("X: %4.2f  %4.2f  %4.2f  %4.2f\n", pa.x, x_std, map_landmark.x_f,
+                    gaussian_probability(pa.x, x_std, map_landmark.x_f));
+            printf ("Y: %4.2f  %4.2f  %4.2f  %4.2f\n", pa.y, y_std, map_landmark.y_f,
+                    gaussian_probability(pa.y, y_std, map_landmark.y_f));
         }
+        
         pa.weight = prod;
     }
 }
@@ -146,6 +144,8 @@ void ParticleFilter::resample() {
     for(int n=0; n<num_particles; ++n) {
         particles_new.push_back(this->particles[d(gen)]);
     }
+    this->particles = particles_new;
+    this->num_particles = particles_new.size();
 }
 
 Particle ParticleFilter::SetAssociations(

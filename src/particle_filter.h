@@ -31,8 +31,6 @@ class ParticleFilter {
     // Number of particles to draw
     int num_particles; 
     
-    
-    std::default_random_engine engine;
     // Flag, if filter is initialized
     bool is_initialized;
     
@@ -80,13 +78,6 @@ public:
      */
     void prediction(double delta_t, double std_pos[], double velocity, double yaw_rate);
     
-    /**
-     * dataAssociation Finds which observations correspond to which landmarks (likely by using
-     *   a nearest-neighbors data association).
-     * @param predicted Vector of predicted landmark observations
-     * @param observations Vector of landmark observations
-     */
-    void dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations);
     
     /**
      * updateWeights Updates the weights for each particle based on the likelihood of the 
@@ -94,7 +85,7 @@ public:
      * @param sensor_range Range [m] of sensor
      * @param std_landmark[] Array of dimension 2 [Landmark measurement uncertainty [x [m], y [m]]]
      * @param observations Vector of landmark observations
-     * @param map Map class containing map landmarks
+     * @param map_landmarks Map class containing map landmarks
      */
     void updateWeights(double sensor_range, double std_landmark[], const std::vector<LandmarkObs> &observations,
             const Map &map_landmarks);
