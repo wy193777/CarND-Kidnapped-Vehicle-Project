@@ -25,7 +25,7 @@ std::default_random_engine ENGINE;
 using namespace std;
 
 double ParticleFilter::gaussian_random(double mean, double deviation) {
-    std::normal_distribution<double> dist(mean, deviation);
+    std::normal_distribution<double> dist(mean, 0);
     return dist(ENGINE);
 }
 
@@ -57,7 +57,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 
 void ParticleFilter::prediction(
     double delta_t, double std_pos[], double velocity, double yaw_rate) {
-    for (auto particle : this->particles) {
+    for (auto &particle : this->particles) {
         double pre_x = gaussian_random(particle.x, std_pos[0]);
         double pre_y = gaussian_random(particle.y, std_pos[1]);
         double pre_theta = gaussian_random(particle.theta, std_pos[2]);
@@ -90,45 +90,44 @@ void ParticleFilter::updateWeights(
     
     double x_std = std_landmark[0];
     double y_std = std_landmark[1];
-    for (auto pa : this->particles) {
+    for (auto &pa : this->particles) {
         vector<LandmarkObs> observations_world;
-
-        for (auto landmark :observations) {
+        pa.sense_x.clear();
+        pa.sense_y.clear();
+        pa.associations.clear();
+        pa.weight = 1.0;
+        for (auto &ob :observations) {
             // transformed from local coordinate to world coordinate
+            double sense_x = ob.x * cos(pa.theta) - ob.y * sin(pa.theta) + pa.x;
+            double sense_y = ob.x * sin(pa.theta) - ob.y * cos(pa.theta) + pa.y;
             LandmarkObs obs_t = {
                 -1,
-                pa.x * cos(pa.theta) - pa.y * sin(pa.theta) + landmark.x,
-                pa.x * sin(pa.theta) - pa.y * cos(pa.theta) + landmark.y,
+                sense_x,
+                sense_y
             };
-            
+            //pa.sense_x.push_back(sense_x);
+            //pa.sense_y.push_back(sense_y);
+            //pa.associations.push_back(landmark.id);
             vector<double> distances;
             auto [id1, x1, y1] = obs_t;
-            for (auto landmark : map_landmarks.landmark_list) {
+            for (auto &landmark : map_landmarks.landmark_list) {
                 auto [id2, x2, y2] = landmark;
                 double distance = this->distance(x1, y1, x2, y2);
                 if (distance <= sensor_range)
                     distances.push_back(distance);
             }
-            vector<double>::iterator result = min_element(
-                begin(distances), end(distances));
-            auto lm = map_landmarks
-                .landmark_list[::distance(begin(distances), result)];
+            auto result = min_element(begin(distances), end(distances));
+            auto lm = map_landmarks.landmark_list[::distance(begin(distances), result)];
             obs_t.id = lm.id_i;
-            // printf ("ID: %d\n", lm.id_i);
             observations_world.push_back(obs_t);
         }
         double prod = 1.0;
-        for (auto landmark : observations_world) {
-            printf ("ID: %d\n", pa.id);
+        for (auto &landmark : observations_world) {
             auto map_landmark = map_landmarks.landmark_list[landmark.id];
             prod *= this->gaussian_probability(pa.x, x_std, map_landmark.x_f);
             prod *= this->gaussian_probability(pa.y, y_std, map_landmark.y_f);
-            printf ("X: %4.2f  %4.2f  %4.2f  %4.2f\n", pa.x, x_std, map_landmark.x_f,
-                    gaussian_probability(pa.x, x_std, map_landmark.x_f));
-            printf ("Y: %4.2f  %4.2f  %4.2f  %4.2f\n", pa.y, y_std, map_landmark.y_f,
-                    gaussian_probability(pa.y, y_std, map_landmark.y_f));
         }
-        
+        printf("weight %f\n", prod);
         pa.weight = prod;
     }
 }

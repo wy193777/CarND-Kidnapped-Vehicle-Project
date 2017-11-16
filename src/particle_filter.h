@@ -59,8 +59,8 @@ public:
      * @param x Initial x position [m] (simulated estimate from GPS)
      * @param y Initial y position [m]
      * @param theta Initial orientation [rad]
-     * @param std[] Array of dimension 3 [standard deviation of x [m], standard deviation of y [m]
-     *   standard deviation of yaw [rad]]
+     * @param std[] Array of dimension 3 [standard deviation of x [m], 
+     *   standard deviation of y [m], standard deviation of yaw [rad]]
      */
     void init(double x, double y, double theta, double std[]);
 
