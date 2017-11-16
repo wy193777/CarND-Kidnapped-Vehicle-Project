@@ -40,7 +40,7 @@ double ParticleFilter::distance(double x1, double y1, double x2, double y2) {
 
 
 void ParticleFilter::init(double x, double y, double theta, double std[]) {
-    num_particles = 100;
+    num_particles = 10;
     for (int i = 0; i < num_particles; i++) {
         Particle pa = {
             i,
@@ -57,14 +57,23 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 
 void ParticleFilter::prediction(
     double delta_t, double std_pos[], double velocity, double yaw_rate) {
-    for (auto &particle : this->particles) {
-        double pre_x = gaussian_random(particle.x, std_pos[0]);
-        double pre_y = gaussian_random(particle.y, std_pos[1]);
-        double pre_theta = gaussian_random(particle.theta, std_pos[2]);
-        double curve = velocity / yaw_rate;
-        particle.x = pre_x + curve * (sin(pre_theta + yaw_rate * delta_t) - sin(pre_theta));
-        particle.y = pre_y + curve * (cos(pre_theta) - cos(pre_theta + yaw_rate * delta_t));
-        particle.theta = pre_theta + yaw_rate * delta_t;
+    
+    double curve = velocity / yaw_rate;
+    
+    for (auto &pa : this->particles) {
+        double new_x, new_y, new_theta;
+        if (abs(yaw_rate) >= 0.0001) {
+            new_x = pa.x + curve * (sin(pa.theta + yaw_rate * delta_t) - sin(pa.theta));
+            new_y = pa.y + curve * (cos(pa.theta) - cos(pa.theta + yaw_rate * delta_t));
+            new_theta = pa.theta + yaw_rate * delta_t;
+        } else {
+            new_x = pa.x + velocity * delta_t * cos(pa.theta);
+            new_y = pa.y + velocity * delta_t * sin(pa.theta);
+            new_theta = pa.theta;
+        }
+        pa.x = gaussian_random(new_x, std_pos[0]);
+        pa.y = gaussian_random(new_y, std_pos[1]);
+        pa.theta = gaussian_random(new_theta, std_pos[2]);
     }
 
 }
@@ -98,27 +107,30 @@ void ParticleFilter::updateWeights(
         pa.weight = 1.0;
         for (auto &ob :observations) {
             // transformed from local coordinate to world coordinate
+            printf("observation (%f, %f)\n", ob.x, ob.y);
+            
             double sense_x = ob.x * cos(pa.theta) - ob.y * sin(pa.theta) + pa.x;
-            double sense_y = ob.x * sin(pa.theta) - ob.y * cos(pa.theta) + pa.y;
+            double sense_y = ob.x * sin(pa.theta) + ob.y * cos(pa.theta) + pa.y;
             LandmarkObs obs_t = {
                 -1,
                 sense_x,
                 sense_y
             };
-            //pa.sense_x.push_back(sense_x);
-            //pa.sense_y.push_back(sense_y);
-            //pa.associations.push_back(landmark.id);
+            printf("transformed (%f, %f)\n", sense_x, sense_y);   
+            pa.sense_x.push_back(sense_x);
+            pa.sense_y.push_back(sense_y);
             vector<double> distances;
-            auto [id1, x1, y1] = obs_t;
             for (auto &landmark : map_landmarks.landmark_list) {
-                auto [id2, x2, y2] = landmark;
-                double distance = this->distance(x1, y1, x2, y2);
+                double distance = this->distance(pa.x, pa.y, landmark.x_f, landmark.y_f);
                 if (distance <= sensor_range)
                     distances.push_back(distance);
             }
             auto result = min_element(begin(distances), end(distances));
             auto lm = map_landmarks.landmark_list[::distance(begin(distances), result)];
             obs_t.id = lm.id_i;
+            pa.associations.push_back(lm.id_i);
+            printf("Landmark (%f, %f)\n", lm.x_f, lm.y_f);
+            printf("Nearests (%f, %f)\n", sense_x, sense_y);
             observations_world.push_back(obs_t);
         }
         double prod = 1.0;
@@ -136,7 +148,7 @@ void ParticleFilter::resample() {
     std::random_device rd;
     std::mt19937 gen(rd());
     vector<double> weights;
-    for (auto particle : this->particles)
+    for (auto &particle : this->particles)
         weights.push_back(particle.weight);
     std::discrete_distribution<> d(weights.begin(), weights.end());
     vector<Particle> particles_new;
