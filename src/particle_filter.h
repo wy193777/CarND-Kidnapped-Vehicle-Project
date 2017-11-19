@@ -34,10 +34,18 @@ class ParticleFilter {
     // Flag, if filter is initialized
     bool is_initialized;
     
+    std::vector<double> weights;
+    
     double gaussian_random(double mean, double deviation);
     
     //calculates the probability of x for 1-dim Gaussian with mean mu and var. sigma
-    double gaussian_probability(double mu, double sigma, double x);
+    double gaussian_weight(
+        double p_x,
+        double p_y,
+        double mu_x,
+        double mu_y,
+        double std_x,
+        double std_y);
     
     double distance(double x1, double y1, double x2, double y2);
     

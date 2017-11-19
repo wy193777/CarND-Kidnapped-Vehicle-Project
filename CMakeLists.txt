@@ -1,5 +1,6 @@
 project(PARTICLE_FILTER)
 
+set(CMAKE_VERBOSE_MAKEFILE ON)
 cmake_minimum_required (VERSION 3.5)
 
 add_definitions(-std=c++17)

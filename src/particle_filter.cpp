@@ -25,12 +25,22 @@ std::default_random_engine ENGINE;
 using namespace std;
 
 double ParticleFilter::gaussian_random(double mean, double deviation) {
-    std::normal_distribution<double> dist(mean, 0);
+    std::normal_distribution<double> dist(mean, deviation);
     return dist(ENGINE);
 }
 
-double ParticleFilter::gaussian_probability(double mu, double sigma, double x) {
-    return exp(-(pow(mu - x, 2) / pow(sigma, 2) / 2.0)) / sqrt(2.0 * M_PI * pow(sigma, 2));
+double ParticleFilter::gaussian_weight(
+    double p_x,
+    double p_y,
+    double mu_x,
+    double mu_y,
+    double std_x,
+    double std_y) {
+    
+    double c = 1.0 / (2.0 * M_PI * std_x * std_y);
+    double x_pow = pow(p_x - mu_x, 2) / (2 * pow(std_x, 2));
+    double y_pow = pow(p_y - mu_y, 2) / (2 * pow(std_y, 2));
+    return c * exp( - x_pow - y_pow);
 }
 
 
@@ -99,70 +109,64 @@ void ParticleFilter::updateWeights(
     
     double x_std = std_landmark[0];
     double y_std = std_landmark[1];
-    for (auto &pa : this->particles) {
-        vector<LandmarkObs> observations_world;
-        pa.sense_x.clear();
-        pa.sense_y.clear();
-        pa.associations.clear();
+    for (int idx = 0; idx < this->particles.size(); idx++) {
+        Particle pa = particles[idx];
+        vector<double> sense_x;
+        vector<double> sense_y;
+        vector<int> associations;
         pa.weight = 1.0;
         for (auto &ob :observations) {
             // transformed from local coordinate to world coordinate
-            printf("observation (%f, %f)\n", ob.x, ob.y);
             
-            double sense_x = ob.x * cos(pa.theta) - ob.y * sin(pa.theta) + pa.x;
-            double sense_y = ob.x * sin(pa.theta) + ob.y * cos(pa.theta) + pa.y;
-            LandmarkObs obs_t = {
-                -1,
-                sense_x,
-                sense_y
-            };
-            printf("transformed (%f, %f)\n", sense_x, sense_y);   
-            pa.sense_x.push_back(sense_x);
-            pa.sense_y.push_back(sense_y);
-            vector<double> distances;
+            double world_x = ob.x * cos(pa.theta) - ob.y * sin(pa.theta) + pa.x;
+            double world_y = ob.x * sin(pa.theta) + ob.y * cos(pa.theta) + pa.y;
+            double lm_to_measure = numeric_limits<double>::max();
+            int cloest_lm_id = 0;
+            
+            Map::single_landmark_s closest_lm;
             for (auto &landmark : map_landmarks.landmark_list) {
-                double distance = this->distance(pa.x, pa.y, landmark.x_f, landmark.y_f);
-                if (distance <= sensor_range)
-                    distances.push_back(distance);
+                if (this->distance(pa.x, pa.y, landmark.x_f, landmark.y_f) > sensor_range) {
+                    continue;
+                }
+                
+                double dist = this->distance(world_x, world_y, landmark.x_f, landmark.y_f);
+                if (dist < lm_to_measure) {
+                    lm_to_measure = dist;
+                    cloest_lm_id = landmark.id_i;
+                    closest_lm = landmark;
+                }
             }
-            auto result = min_element(begin(distances), end(distances));
-            auto lm = map_landmarks.landmark_list[::distance(begin(distances), result)];
-            obs_t.id = lm.id_i;
-            pa.associations.push_back(lm.id_i);
-            printf("Landmark (%f, %f)\n", lm.x_f, lm.y_f);
-            printf("Nearests (%f, %f)\n", sense_x, sense_y);
-            observations_world.push_back(obs_t);
+            sense_x.push_back(world_x);
+            sense_y.push_back(world_y);
+            associations.push_back(cloest_lm_id);
+        
+            long double multiplier = this->gaussian_weight(
+                world_x, world_y, 
+                closest_lm.x_f, closest_lm.y_f, x_std, y_std);
+            pa.weight *= multiplier;
         }
-        double prod = 1.0;
-        for (auto &landmark : observations_world) {
-            auto map_landmark = map_landmarks.landmark_list[landmark.id];
-            prod *= this->gaussian_probability(pa.x, x_std, map_landmark.x_f);
-            prod *= this->gaussian_probability(pa.y, y_std, map_landmark.y_f);
-        }
-        printf("weight %f\n", prod);
-        pa.weight = prod;
+        
+        pa = SetAssociations(pa, associations, sense_x, sense_y);
+        weights.push_back(pa.weight);
+        particles[idx] = pa;
     }
 }
 
 void ParticleFilter::resample() {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    vector<double> weights;
-    for (auto &particle : this->particles)
-        weights.push_back(particle.weight);
-    std::discrete_distribution<> d(weights.begin(), weights.end());
+    std::discrete_distribution<> d(this->weights.begin(), this->weights.end());
     vector<Particle> particles_new;
     for(int n=0; n<num_particles; ++n) {
-        particles_new.push_back(this->particles[d(gen)]);
+        particles_new.push_back(this->particles[d(ENGINE)]);
     }
     this->particles = particles_new;
-    this->num_particles = particles_new.size();
+    weights.clear();
 }
 
 Particle ParticleFilter::SetAssociations(
     Particle particle, 
-    std::vector<int> associations, std::vector<double> sense_x, std::vector<double> sense_y)
-{
+    std::vector<int> associations, 
+    std::vector<double> sense_x, 
+    std::vector<double> sense_y) {
     // particle: the particle to assign each listed association, 
     // and association's (x,y) world coordinates mapping to
     // associations: The landmark id that goes along with each listed association
@@ -174,11 +178,11 @@ Particle ParticleFilter::SetAssociations(
     particle.sense_x.clear();
     particle.sense_y.clear();
 
-    particle.associations= associations;
-     particle.sense_x = sense_x;
-     particle.sense_y = sense_y;
+    particle.associations = associations;
+    particle.sense_x = sense_x;
+    particle.sense_y = sense_y;
 
-     return particle;
+    return particle;
 }
 
 string ParticleFilter::getAssociations(Particle best)
